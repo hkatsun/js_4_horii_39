@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>html,body{height:100%;}body{padding:0;margin:0;}h1{padding:0;margin:0;font-size:50%;}</style>
+    <link rel="stylesheet" href="css/reset.css">
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- bing&Bmap -->
+    <script src='https://www.bing.com/api/maps/mapcontrol?callback=GetMap&key=' async defer></script>
+    <script src="./js/BmapQuery.js"></script>
+    <!-- ajax -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/axios-jsonp/dist/index.min.js"></script>
+
+</head>
+<body>
+
+<!-- MAP[START] -->
+<h1>Map:Geolocation</h1>
+<!-- 1:300m、2:500m、3:1000m、4:2000m、5:3000m -->
+
+<div class="radio_btns">
+    <p>検索範囲：</p>
+    <input type="radio" name="gn_scale" value="1" checked="checked">300m
+    <input type="radio" name="gn_scale" value="2">500m
+    <input type="radio" name="gn_scale" value="3">1000m
+    <input type="radio" name="gn_scale" value="4">2000m
+    <input type="radio" name="gn_scale" value="5">3000m
+    <div class="comment"></div>
+    <br>
+</div>
+<div class="radio_btns">
+    <p>wifi：</p>
+    <input type="radio" name="gn_wifi" value="1" checked="checked">あり
+    <input type="radio" name="gn_wifi" value="0">なし<br>
+</div>
+<div class="btns">
+    <input type="button" id="btn" value="検索"><br>
+    <input type="button" id="btn_crr" value="現在地"><br>
+    <input type="button" id="btn_translate" value="翻訳"><br>
+</div>
+
+<div id="myMap"></div>
+<table id="table_cust">
+    <!-- <div style='text-align:center;padding-top: 154px;'>Show results from GurunaviAPI on this place.
+    </div> -->
+        <!-- <thead>
+            <tr>
+                <th>Search Result</th>
+            </tr>
+        </thead>
+        <tbody>
+            <td>
+                <ul id="contents">
+                    <li class="c_cat">'+s_cat+'</li>
+                    <li class="c_name">'+s_name+'<p class="c_geo" style="display:none">'+s_lat+'</li>
+                    <li class="c_memo">'+s_tel+'</li>
+                </ul>
+            </td>
+            <td>
+                <ul class="contents">
+                    <li class="c_addrs">'+addrs+'</li>
+                    <li class="c_pr">'+s_pr+'</li>
+                </ul>
+            </td>
+        </tbody> -->
+</table>
+
+<script>
+
+//Initialization processing
+let map;
+let lat = 35.667215;
+let lon = 139.713861;
+let map_size = 16;
+let map_circle_ranges = [0, 300,500,1000,2000,3000];
+let map_circle_range = map_circle_ranges[1];
+
+const style = {
+            pinColor:"#ff0000",
+            fillColor:"rgba(0,0,100,0.1)"
+            };
+
+function wait(sec) {
+    var objDef = new $.Deferred;
+    setTimeout(function () {
+        objDef.resolve(sec);
+    }, sec*1000);
+    return objDef.promise();
+};
+
+function GetMap(){
+
+    map = new Bmap("#myMap");
+    map.startMap(lat, lon, "load", map_size);
+    map.pin(lat,lon,"#ff0000");
+
+    //地図中のクリックされた箇所の geocodeを取得
+    map.onGeocode("click", function(data){
+
+        let n = 100;
+        let lat_tmp = lat;
+        let lon_tmp = lon;
+        lat = data.location.latitude;  //Get latitude
+        lon = data.location.longitude; //Get longitude
+
+        // map.changeMap(lat, lon, "load", map_size);
+        map.circleSet(lat, lon, map_circle_range, style); //1000m = 1km, 2000 = 2Km  
+        // map.circle(map_circle_range, style);
+
+        //
+        // 実装失敗パート
+        // Google Maps APIでの、[PanTo]メソッド、の実装を試みましたが、うまく実装できませんでした....
+        //
+        let lat_diff = Math.abs(lat_tmp - lat) / n ;
+        let lon_diff = Math.abs(lon_tmp - lon) / n ;
+
+        if((lat_tmp <= lat)&&(lon_tmp <= lon)){
+            for(let i=0; i<n; i++){
+                map.changeMap(lat_tmp+lat_diff*i, lon_tmp+lon_diff*i, "load", map_size);
+                wait(10);
+            }
+        } else if ((lat_tmp > lat)&&(lon_tmp <= lon)){
+            for(let i=0; i<n; i++){
+                map.changeMap(lat_tmp-lat_diff*i, lon_tmp+lon_diff*i, "load", map_size);
+                wait(10);
+            }
+        } else if ((lat_tmp > lat)&&(lon_tmp > lon)){
+            for(let i=0; i<n; i++){
+                map.changeMap(lat_tmp-lat_diff*i, lon_tmp-lon_diff*i, "load", map_size);
+                wait(10);
+            }
+        } else if ((lat_tmp <= lat)&&(lon_tmp > lon)){
+            for(let i=0; i<n; i++){
+                map.changeMap(lat_tmp+lat_diff*i, lon_tmp-lon_diff*i, "load", map_size);
+                wait(10);
+            }
+        }       
+        
+    });
+
+}
+
+// ------------------------------------------------------
+// 関数：ぐるなびデータ取得
+// ------------------------------------------------------
+function showData(data){
+    //データ確認用
+    console.log(data.rest.length);
+
+    let num = data.rest.length;
+
+    if(num>=100){
+        $(".comment").css({'font-size':'5px','line-height':'18px','padding-left':'60px'});
+        $(".comment").append('<div> ← 検索結果が100件以上のため, 全て表示するには検索範囲を絞ってください</div>');
+        num = 'over 100'
+        // style='font-size:5px;line-height:18px;padding-left:60px'
+    }
+
+    //データを繰り返し処理で取得
+    $("#table_cust").empty();
+    $("#table_cust").append('<thead><tr><th style="text-decoration: underline">Search Result : '+num+' items</th></tr></thead>');
+    
+    $("#table_cust").append('<tbody>');
+    for( let i=0; i<data.rest.length; i++){
+        
+        let s_cat  = data.rest[i].category;
+        let s_name = data.rest[i].name;
+        let s_tel  = data.rest[i].tel;
+        let opn_tm = data.rest[i].opentime.split('(').shift();
+        let addrs  = data.rest[i].address.split(' ').slice(1);
+        let s_pr   = data.rest[i].pr.pr_short;
+        let s_lat  = data.rest[i].latitude;
+        let s_log  = data.rest[i].longitude;
+        $("#table_cust").append('<tr><td><ul id="contents"><li class="c_cat">'+s_cat+'</li><li class="c_name">'+s_name+'<p class="c_geo" style="display:none">'+s_lat+'</li><li class="c_memo">'+s_tel+'</li></ul></td><td><ul class="contents"><li class="c_addrs">'+addrs+'</li><li class="c_pr">'+s_pr+'</li></ul></td>');
+
+        let pin = map.pinText(s_lat,s_log,s_name,s_cat,s_name[0]);
+
+    };
+    $("#table_cust").append('</tbody>');
+    
+}
+
+// ------------------------------------------------------
+// [検索]ボタン：ぐるなびAPIへデータRequest → APIサーバーからresponseデータ取得
+// ------------------------------------------------------
+$("#btn").on("click", function() {
+
+    //送信データをObject変数で用意
+    //参考URL:https://api.gnavi.co.jp/api/manual/restsearch/
+
+    let range_num = $("[name=gn_scale]:checked").val();
+    let map_scale_num = Math.ceil((range_num-1)/2); // 2stepぐらい用意
+    map_scale_num = Number(map_size)-Number(map_scale_num);
+
+    const data = {
+        keyid:'063bcc31d5261c3f91eea6ddcf057ebd',
+        latitude:lat,
+        longitude:lon,
+        range:$("[name=gn_scale]:checked").val(),
+        lunch:$("[name=gn_wifi]:checked").val(),
+        hit_per_page:100
+    };
+    //Ajax（非同期通信）
+    axios.get('https://api.gnavi.co.jp/RestSearchAPI/v3/', {
+        params:data
+    }).then(function (response) {
+        //データ受信成功！！showData関数にデータを渡す
+        map.startMap(lat, lon, "load", map_scale_num);
+        map.circleSet(lat, lon, map_circle_ranges[range_num], style); //1000m = 1km, 2000 = 2Km  
+        showData(response.data);
+    }).catch(function (error) {
+        console.log(error);//通信Error
+    }).then(function () {
+        //console.log("Last");//通信OK/Error後に処理を必ずさせたい場合
+    });
+})
+
+// ------------------------------------------------------
+// [現在地]ボタン：「現在位置」の地図表示
+// ------------------------------------------------------
+$("#btn_crr").on("click", function() {
+
+    map.geolocation(function(data) {
+        //location
+        lat = data.coords.latitude;
+        lon = data.coords.longitude;
+        map.changeMap(lat, lon, "load", map_size);
+        map.circle(map_circle_range, style); //1000m = 1km, 2000 = 2Km
+    });
+
+})
+
+// ------------------------------------------------------
+// [翻訳]ボタン押下：「翻訳」の実施（GoogleAppsScript(GAS)で実装するも、CROSSなんちゃらで処理結果を取得できず....
+//  ※ 下記処理が完遂後は、店の情報を翻訳できるよう、処理を関数化し、テキストの差し替えを行う計画でした。
+// ------------------------------------------------------
+$("#btn_translate").on("click", function() {
+
+    input_text = "【表参道駅3分】 香り高いスパイスが織りなす本格インドカレー＆インド料理 テイクアウト＆デリバリーもやってます！電話予約OK Uberならラクラク注文♪"
+
+    const par_trans = {
+        text: input_text,
+        source: 'ja',
+        target: 'en',
+        crossDomain: true
+    };
+
+    //Ajax（非同期通信）
+    axios.get('https://script.google.com/macros/s/AKfycbzmqoIDpDM9eGiGd6eL6bupbVcFVe_hEMEsUqMzNKXBSRkbcRmy/exec', {
+        // adapter: axiosJsonpAdapter,
+        // // callbackParamName: "cb",
+        params:par_trans
+    }).then(function (response) {
+        console.log(response.data);
+    }).catch(function (error) {
+        console.log(error);
+    }).then(function () {
+        console.log("Last");//通信OK/Error後に処理を必ずさせたい場合
+    });
+})
+
+
+</script>
+</body>
+</html>
